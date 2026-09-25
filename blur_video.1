@@ -1,4 +1,4 @@
-.TH BLUR_VIDEO.PY 1 "2026-09-25" "blur_video.py" "User Commands"
+.TH BLUR_VIDEO.PY 1 "2026-09-25" "blur_video.py 1.0.0" "User Commands"
 .SH NAME
 blur_video.py \- obscure a rectangular region (or the whole frame) of one or more MP4 videos
 .SH SYNOPSIS
@@ -33,6 +33,9 @@ blur_video.py \- obscure a rectangular region (or the whole frame) of one or mor
 .br
 .B blur_video.py
 .RB \-H
+.br
+.B blur_video.py
+.RB \-V
 .SH DESCRIPTION
 .B blur_video.py
 applies a privacy/censoring effect (Gaussian blur, pixelation, box blur,
@@ -377,6 +380,15 @@ Show a brief usage summary and exit immediately. All other switches on
 the command line are ignored when
 .B \-H
 is present, even if they would otherwise be invalid or incomplete.
+.TP
+.B \-V
+Print the program name and version number (e.g.
+.BR "blur_video.py 1.0.0" )
+and exit immediately. Like
+.BR \-H ,
+all other switches are ignored when
+.B \-V
+is present.
 .SH INTERRUPTING
 The script can be stopped at any time with
 .BR Ctrl-C .

@@ -63,6 +63,7 @@ SWITCHES
   -N            Dry run: show what would happen, without opening/probing any
                 video or writing any files
   -H            Show help and exit (all other switches are ignored)
+  -V            Show version and exit (all other switches are ignored)
 
 Exactly one of -F / -R / -C is required. Either -A, or -X and -Y (with
 optional -DX/-DY), or -I, must be given.
@@ -95,6 +96,8 @@ import os
 import subprocess
 import sys
 from collections import deque
+
+__version__ = "1.0.0"
 
 VIDEO_EXT = ".mp4"
 VALID_MODES = "GPBMS"
@@ -863,6 +866,11 @@ def parse_args():
     parser.add_argument(
         "-H", "-h", "--help", action="help", default=argparse.SUPPRESS,
         help="Show this help message and exit (all other switches are ignored)",
+    )
+    parser.add_argument(
+        "-V", "--version", action="version",
+        version=f"%(prog)s {__version__}",
+        help="Show version number and exit (all other switches are ignored)",
     )
 
     src = parser.add_mutually_exclusive_group(required=True)
