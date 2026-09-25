@@ -1,0 +1,64 @@
+# blur_video
+
+Obscure a rectangular region (or the entire frame) of one or more MP4
+videos — Gaussian blur, pixelation, box blur, a median filter, or a solid
+fill — powered by ffmpeg.
+
+## Features
+
+- Region or whole-frame effects, five modes: `G` Gaussian, `P` pixelate,
+  `B` box blur, `M` median, `S` solid fill
+- Optional soft-edge feathering (`-D`) with a linear falloff at the border
+- Time-windowed effects (`-S` / `-E`)
+- Batch mode (`-I`): apply several independently-configured passes to
+  every matched file from one parameter file, chained into a single encode
+- 5-second test-clip preview (`-T`) before committing to a full run
+- Dry-run mode (`-N`)
+- Recursive / current-folder / wildcard file selection (`-R` / `-C` / `-F`)
+- Installs its own Python prerequisites on first run (`opencv-python`,
+  `imageio-ffmpeg` — the latter bundles ffmpeg itself, so no separate
+  system ffmpeg install is required)
+- Graceful per-file error handling with an on-demand error log
+  (`blur_errors.log`, only created if something actually fails)
+- Clean Ctrl-C interruption — no partial output files left behind
+
+## Requirements
+
+- Python 3.8+
+- Internet access on first run only, so `pip` can fetch `opencv-python`
+  and `imageio-ffmpeg` if they aren't already installed. To pre-install:
+
+  ```bash
+  pip install -r requirements.txt
+  ```
+
+## Quick start
+
+```bash
+# Blur a fixed region for the whole video
+python blur_video.py -F movie.mp4 -X 100 -Y 50 -DX 300 -DY 200 -M G 70
+
+# Pixelate the whole frame from 10s to 20s
+python blur_video.py -F movie.mp4 -A -S 10 -E 20 -M P 90
+
+# Preview a soft-edged box blur before running for real
+python blur_video.py -F movie.mp4 -X 100 -Y 50 -DX 300 -DY 200 -M B 70 -D 12 -T
+
+# Apply several different blurred regions to every .mp4 in a folder
+python blur_video.py -C -I examples/passes.txt
+```
+
+## Full reference
+
+Every switch, the parameter-file format, exit codes, and known caveats
+are documented in the man page:
+
+```bash
+man ./blur_video.1
+```
+
+(or open `blur_video.1` directly if `man` isn't installed).
+
+## License
+
+[MIT](LICENSE) — edit the copyright line to your name.

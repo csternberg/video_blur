@@ -1,0 +1,8 @@
+__pycache__/
+*.pyc
+blur_errors.log
+
+# common local virtualenv locations
+.venv/
+venv/
+env/

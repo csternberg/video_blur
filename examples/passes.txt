@@ -1,0 +1,13 @@
+# Example -I parameter file for blur_video.py
+# Format: X;DX;Y;DY;M;D;S;E
+#   X,Y     upper-left corner of the region
+#   DX,DY   width/height (blank = extend to frame edge)
+#   M       mode letter + strength 0-100, no separator (e.g. G70, P45, S0)
+#   D       fade width in pixels (blank or 0 = no feather)
+#   S,E     start/end time in seconds (blank = 0 / end of video)
+#
+# Pass 1: heavy pixelation, top-left area, feathered 5px, from 5s onward
+20;80;20;60;P80;5;5;
+#
+# Pass 2: light Gaussian blur, another region, feathered 10px, whole clip
+150;100;100;90;G40;10;;

@@ -1,0 +1,554 @@
+.TH BLUR_VIDEO.PY 1 "2026-09-25" "blur_video.py" "User Commands"
+.SH NAME
+blur_video.py \- obscure a rectangular region (or the whole frame) of one or more MP4 videos
+.SH SYNOPSIS
+.B blur_video.py
+.RB ( \-F
+.I mm
+.RB "| " \-R " | " \-C )
+.RB [ \-O
+.IR ff ]
+.RB [ \-A ]
+.RB [ \-X
+.I xx
+.B \-Y
+.IR yy
+.RB [ \-DX
+.I xx1
+.B \-DY
+.IR yy1 ]]
+.RB [ \-S
+.IR ss ]
+.RB [ \-E
+.IR ee ]
+.RB [ \-M
+.I mode
+.IR gg ]
+.RB [ \-D
+.IR dd ]
+.RB [ \-I
+.IR ii ]
+.RB [ \-T ]
+.RB [ \-N ]
+.br
+.B blur_video.py
+.RB \-H
+.SH DESCRIPTION
+.B blur_video.py
+applies a privacy/censoring effect (Gaussian blur, pixelation, box blur,
+median filter, or a solid color fill) to a rectangular region of one or
+more MP4 video files, or to the entire frame, using
+.BR ffmpeg (1)
+as the underlying engine.
+The effect can be restricted to a time window, feathered with a soft
+fade at the edges, applied as several independent, chained passes read
+from a parameter file, and previewed on a short test clip before
+committing to a full run.
+.PP
+The script has no permanent external dependencies of its own: on first
+run it checks for the Python packages
+.B opencv-python
+(used to read a video's width, height and duration) and
+.B imageio-ffmpeg
+(which bundles a portable
+.B ffmpeg
+binary, so no separate system installation of ffmpeg is required), and
+installs them with
+.B pip
+automatically if they are missing. Dry-run mode
+.RB ( \-N )
+never opens or decodes a video and therefore does not need
+.BR opencv-python .
+.SH FILE SELECTION
+Exactly one of the following three is required, and they are mutually
+exclusive:
+.TP
+.BI \-F " mm"
+Process a single input file, or a shell-style wildcard pattern, given as
+.IR mm .
+Quote patterns containing wildcards so the shell does not expand them
+first, e.g.
+.BR "\-F \(dqmovie*.mp4\(dq" .
+.TP
+.B \-R
+Recursively process every
+.B .mp4
+file in the current directory and all subdirectories.
+.TP
+.B \-C
+Process every
+.B .mp4
+file in the current directory only (not recursive).
+.SH OUTPUT OPTIONS
+.TP
+.BI \-O " ff"
+Write output files into folder
+.IR ff ,
+which is created if it does not already exist. If omitted, each output
+file is written next to its corresponding input file.
+.PP
+Output filenames are the input filename with
+.B _blurred
+appended before the extension (e.g.
+.IR movie.mp4 " \(-> " movie_blurred.mp4 ).
+If a file of that name already exists, a two-digit numeric suffix
+.RB ( _00 ", " _01 ", " "..." )
+is appended until the name is unique; existing files are never
+overwritten.
+.SH REGION AND EFFECT OPTIONS
+.TP
+.B \-A
+Apply the effect to the entire video frame instead of a rectangular
+region. Mutually exclusive with
+.BR \-X / \-Y / \-DX / \-DY ,
+.BR \-D ,
+and
+.BR \-I .
+.TP
+.BI \-X " xx"
+X coordinate (pixels from the left) of the upper-left corner of the
+region to affect. Required unless
+.B \-A
+or
+.B \-I
+is used.
+.TP
+.BI \-Y " yy"
+Y coordinate (pixels from the top) of the upper-left corner of the
+region. Required unless
+.B \-A
+or
+.B \-I
+is used.
+.TP
+.BI \-DX " xx1"
+Width, in pixels, of the region. If omitted, the region extends from
+.I xx
+to the right edge of the frame. If
+.IR xx " + " xx1
+would extend past the right edge, the region is clamped to end at the
+edge instead of failing.
+.TP
+.BI \-DY " yy1"
+Height, in pixels, of the region, with the same "omit or clamp to the
+bottom edge" behaviour as
+.BR \-DX .
+.PP
+If
+.I xx
+or
+.I yy
+itself lies outside the frame's actual dimensions, that file is skipped
+with an error (see
+.B ERROR HANDLING
+below); this can only be detected once the video has actually been
+opened, so it does not apply in dry-run mode.
+.TP
+.BI \-M " mode gg"
+Select the obscuring effect and its strength.
+.I mode
+is a single letter and
+.I gg
+is a strength from 0 to 100; the two are given as separate
+arguments (e.g.
+.BR "\-M P 60" ).
+If
+.B \-M
+is omitted entirely, the default is
+.B "G 50"
+(medium Gaussian blur). The modes are:
+.RS
+.TP
+.B G
+\(en Gaussian blur.
+.I gg
+scales the blur radius; 100 flattens the region to a single average
+colour.
+.TP
+.B P
+\(en Pixelate / mosaic.
+.I gg
+controls block coarseness: low values give small, subtle blocks; 100
+collapses the region to just a couple of large blocks.
+.TP
+.B B
+\(en Box blur.
+.I gg
+scales the blur radius similarly to
+.BR G ,
+but with a blockier, harder-edged look and no risk of the region ever
+appearing "softly" blurred instead of destroyed.
+.TP
+.B M
+\(en Median filter.
+.I gg
+scales the smoothing radius. The radius is intentionally capped low
+(regardless of how large
+.I gg
+or the region is) because this filter's cost grows quickly with radius.
+.TP
+.B S
+\(en Solid fill.
+.I gg
+is not a "strength" but a fill
+.B brightness
+from 0 (black) to 100 (white), with 50 giving mid-grey. The fill is
+always fully opaque no matter what value is given \(en there is no
+"gg\ =\ 0 means no effect" case for this mode, unlike the other four.
+.RE
+.TP
+.BI \-D " dd"
+Feather the region's edge: grow the affected box by
+.I dd
+pixels on every side, with the effect's strength ramping
+.B linearly
+from full strength at the original box's edge down to zero at
+.I dd
+pixels beyond it, producing a soft transition instead of a hard
+rectangular boundary. The ramp is built from a blurred mask using a box
+blur, which is what makes the falloff exactly linear rather than the
+smoother S-curve a Gaussian falloff would give.
+Not usable with
+.BR \-A ,
+since a whole-frame effect has no edge to feather. When
+.B \-I
+is used,
+.B \-D
+on the command line is ignored; each line of the parameter file
+supplies its own fade width instead (see
+.B PARAMETER FILE
+below).
+.SH TIME WINDOW OPTIONS
+.TP
+.BI \-S " ss"
+Start time, in seconds, at which the effect begins. If omitted, the
+effect starts at the beginning of the video (or, in test mode without
+.BR \-I ,
+determines where the 5-second test clip itself is extracted from).
+.TP
+.BI \-E " ee"
+End time, in seconds, at which the effect stops. If omitted, the effect
+continues to the end of the video.
+.PP
+If only
+.B \-S
+is given, the effect runs from
+.I ss
+to the end; if only
+.B \-E
+is given, it runs from the start to
+.IR ee .
+Values are silently clamped to the video's actual duration rather than
+treated as an error.
+.SH TEST MODE
+.TP
+.B \-T
+Instead of processing the full video, extract a short (up to 5 second)
+test clip so settings can be checked before committing to a full run.
+.RS
+.IP \(bu 2
+.B Without \-I:
+two files are produced, the unmodified clip
+.RI ( name _test-orig.mp4 )
+and the same clip with the effect applied
+.RI ( name _test_blurred.mp4 ),
+both starting at
+.B \-S
+(or the beginning of the video if
+.B \-S
+is not given). The effect is applied across the whole clip regardless
+of any
+.B \-S / \-E
+window, since the point of the test is to preview the region and
+strength, not the timing.
+.IP \(bu 2
+.B With \-I:
+one original clip is produced per parameter-file line
+.RI ( name _test-orig_ NN .mp4),
+each starting at
+.B that line's own S
+value (so the preview shows the actual moment in the video where that
+pass is meant to apply), together with a matching blurred clip for that
+pass alone
+.RI ( name _test_blurred_ NN .mp4).
+Passes are previewed independently, not chained together, so each can
+be judged on its own.
+.RE
+.SH BATCH PARAMETER FILE
+.TP
+.BI \-I " ii"
+Read blur parameters from the text file
+.I ii
+instead of from the command line. Every line's parameters are applied,
+in order, to
+.B every
+matched input file, chained together into a single encode (i.e. one
+output file per input, with all passes' effects baked in). This is
+meant for applying several distinct blurred regions to the same file in
+one pass.
+.PP
+When
+.B \-I
+is used,
+.BR \-X , " \-Y" , " \-DX" , " \-DY" , " \-M" , " \-D" , " \-S " and " \-E"
+on the command line are all ignored (a note is printed if any of them
+were given); each line of the file supplies its own values instead.
+.B \-A
+cannot be combined with
+.B \-I
+at all, since the file format has no "whole frame" notion \(em to blur
+an entire frame as one of several passes, specify a region covering the
+full frame dimensions instead, and it will be clamped automatically if
+it doesn't fit exactly.
+.SS Parameter file format
+Each non-blank line that does not start with
+.B #
+is one pass, with exactly eight semicolon-separated fields in this
+order:
+.PP
+.RS
+.B X;DX;Y;DY;M;D;S;E
+.RE
+.PP
+.TP
+.B X, Y
+Upper-left corner of the region. Required, whole numbers, not negative.
+.TP
+.B DX, DY
+Width and height of the region. May be left blank to mean "extend to
+the frame edge", exactly like their command-line equivalents.
+.TP
+.B M
+Mode letter immediately followed by the strength value, with
+.B no
+separator between them \(em e.g.
+.BR G70 ", " P45 ", " B60 ", " M20 ", " S0 .
+May be left blank, meaning
+.B G50
+(the same default as the command line).
+.TP
+.B D
+Fade width in pixels for this pass, exactly as
+.B \-D
+above. May be left blank or given as
+.B 0
+for no feathering.
+.TP
+.B S, E
+Start and end time in seconds for this pass. May be left blank, meaning
+0 and end-of-video respectively.
+.PP
+Example file with two passes, the first a heavily pixelated region
+starting 5 seconds in, the second a lightly feathered Gaussian blur
+covering the whole clip:
+.PP
+.RS
+.nf
+.ft CR
+20;80;20;60;P80;5;5;
+150;100;100;90;G40;10;;
+.ft
+.fi
+.RE
+.PP
+The file is fully parsed and validated
+.B before
+any file is opened or any output is written; if any line is malformed,
+the run aborts immediately with the specific line number and problem
+described, rather than failing partway through a batch.
+.SH DRY RUN
+.TP
+.B \-N
+Show what would be done \(em which files were matched, what region,
+mode, strength, fade and time window would apply to each, and what
+output filename would be used \(em without opening, probing, or
+modifying any file. Because no video is actually opened in this mode,
+region and time bounds are
+.B not
+checked against the real video dimensions or duration; a region that
+would be silently clamped or rejected in a real run may be reported
+as-is here. Dry-run mode does not require
+.B opencv-python
+to be installed, since it never needs to read a video's properties.
+.SH HELP
+.TP
+.B \-H
+Show a brief usage summary and exit immediately. All other switches on
+the command line are ignored when
+.B \-H
+is present, even if they would otherwise be invalid or incomplete.
+.SH INTERRUPTING
+The script can be stopped at any time with
+.BR Ctrl-C .
+The underlying
+.B ffmpeg
+process is terminated, and the output file that was being written at
+the moment of interruption is deleted automatically and silently, so no
+partial or corrupt file is left behind. Any output file that had
+already finished successfully earlier in the same run is left in place.
+The same automatic cleanup also applies if
+.B ffmpeg
+itself fails partway through for any other reason.
+.SH ERROR HANDLING
+Problems with an individual input file \(em it no longer exists, is
+empty, cannot be read due to permissions, or is not actually a valid
+video despite the
+.B .mp4
+name or extension \(em cause that file to be skipped, with the run
+continuing on to the remaining files. The same applies to an output
+location that cannot be created or is not writable (e.g. a read-only
+folder given to
+.BR \-O ).
+.PP
+Every skipped file is recorded in
+.B blur_errors.log
+in the current working directory, one line per problem, each with a
+timestamp. This file is only created the moment the first actual error
+occurs; a run in which every file succeeds leaves no log file behind.
+.SH FILES
+.TP
+.B blur_errors.log
+Created on demand (see
+.B ERROR HANDLING
+above) in the current working directory, listing any files that were
+skipped and why.
+.SH EXIT STATUS
+.TP
+.B 0
+All matched files were processed successfully (individual file failures
+are logged but do not, by themselves, produce a non-zero exit status;
+check the summary line and
+.B blur_errors.log
+to distinguish "0 failed" from "some failed").
+.TP
+.B 1
+No input files matched the given
+.BR \-F / \-R / \-C
+selection, or a parameter file given to
+.B \-I
+could not be parsed.
+.TP
+.B 2
+Invalid combination of command-line switches (reported by the argument
+parser itself before any file is touched).
+.TP
+.B 130
+The run was interrupted with Ctrl-C.
+.SH EXAMPLES
+Blur a fixed region for an entire video with a medium Gaussian blur:
+.PP
+.RS
+.nf
+blur_video.py \-F movie.mp4 \-X 100 \-Y 50 \-DX 300 \-DY 200 \-M G 70
+.fi
+.RE
+.PP
+Pixelate the whole frame from 10s to 20s, recursively over subfolders,
+writing results to
+.BR ./out :
+.PP
+.RS
+.nf
+blur_video.py \-R \-A \-S 10 \-E 20 \-M P 90 \-O ./out
+.fi
+.RE
+.PP
+Preview a soft-edged box blur on a 5-second test clip before committing:
+.PP
+.RS
+.nf
+blur_video.py \-F movie.mp4 \-X 100 \-Y 50 \-DX 300 \-DY 200 \e
+              \-M B 70 \-D 12 \-T
+.fi
+.RE
+.PP
+Apply several different blurred regions to every file in the current
+folder, using a parameter file:
+.PP
+.RS
+.nf
+blur_video.py \-C \-I passes.txt
+.fi
+.RE
+.PP
+Check what a batch run would do without touching any files:
+.PP
+.RS
+.nf
+blur_video.py \-R \-I passes.txt \-N
+.fi
+.RE
+.SH CAVEATS AND NOTES
+.IP \(bu 2
+.B No hard numeric limits are pre-validated for region geometry beyond
+.B basic sanity.
+.I xx
+or
+.I yy
+lying outside the frame aborts that file with an error; this can only
+be detected once the file is actually opened, so it is invisible in
+dry-run mode.
+.IP \(bu 2
+.B The median filter's radius is capped low
+(regardless of the requested strength or region size) because its
+computational cost rises quickly with radius; very large regions at
+high
+.B M
+strength will not get a proportionally larger radius the way
+.B G
+or
+.B B
+would.
+.IP \(bu 2
+.BR "Box blur's radius limit differs between the luma and chroma planes" .
+ffmpeg imposes separate maximum radii for each, and the chroma limit is
+roughly half the luma one under standard 4:2:0 chroma subsampling
+(which essentially all normal MP4 sources use). The script computes and
+clamps both independently, so this is handled correctly, but it does
+mean a very large requested box-blur strength on a very small region
+may be silently capped below what the strength value alone would
+suggest.
+.IP \(bu 2
+.B The fade (\-D) transition is linear, not smoothly curved.
+This is a deliberate design choice (achieved via a box-blurred mask)
+rather than a limitation of the effect filters themselves, since a
+box blur applied to a hard edge produces an exactly linear ramp, unlike
+the S-curve a Gaussian-blurred mask would give.
+.IP \(bu 2
+.B Feathering (\-D) adds modest extra processing cost,
+since the affected region is cropped slightly larger and blended with a
+generated soft mask rather than simply overlaid. In testing this added
+only a few percent to total run time for typical region sizes; very
+large fade widths relative to the video's own dimensions would add
+proportionally more.
+.IP \(bu 2
+.B Solid fill (\-M S) never has a "strength 0 means no effect" case,
+unlike the other four modes; a value of 0 still produces a fully
+opaque black fill, not an untouched region.
+.IP \(bu 2
+.B Test-mode clips are always re-encoded, not stream-copied,
+even the unmodified "_test-orig" clip, so that trimming to an exact
+sub-second start time is frame-accurate. This makes test-clip
+extraction slightly slower than a simple cut would be, but avoids
+inaccurate trim points that can occur when cutting compressed video on
+non-keyframe boundaries.
+.IP \(bu 2
+.B Audio is always preserved via stream copy,
+never re-encoded, for both the main output and test clips (except the
+test clip's own audio track, which is re-encoded to AAC alongside its
+frame-accurate video re-encode).
+.IP \(bu 2
+.B File discovery for \-R and \-C only matches the
+.B .mp4
+extension, case-insensitively; other container formats (
+.BR .mov ,
+.B .mkv
+etc.) are not matched even though ffmpeg itself could process them.
+.IP \(bu 2
+.B Only one blur pass per line is supported in the parameter file;
+overlapping regions across different lines are blended in file order
+(later lines drawn on top of earlier ones), not merged or averaged.
+.SH SEE ALSO
+.BR ffmpeg (1)
+.SH AUTHOR
+Not applicable \(em generated for local use.
